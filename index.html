@@ -1,0 +1,1334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>SkyCast — Weather App</title>
+
+  <!-- ============================================================
+       PWA CONFIGURATION
+       ============================================================ -->
+
+  <!-- Web App Manifest (tells browser this is installable) -->
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- Theme color (status bar color on Android) -->
+  <meta name="theme-color" content="#0f1b2d" />
+
+  <!-- iOS / Safari PWA support -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="SkyCast" />
+
+  <!-- iOS home screen icons -->
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png" />
+  <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png" />
+  <link rel="apple-touch-icon" sizes="120x120" href="icons/icon-120.png" />
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png" />
+
+  <!-- SEO / Open Graph -->
+  <meta name="description" content="Real-time weather app with 5-day forecast" />
+  <meta name="application-name" content="SkyCast" />
+
+  <!-- ============================================================
+       WEATHER APP — HTML + CSS + JavaScript
+       ============================================================
+       STRUCTURE OVERVIEW:
+       ┌─────────────────────────────────────────────────────┐
+       │  <head>     → Fonts, meta, CSS variables            │
+       │  <style>    → All CSS (dark/light, animations, UI)  │
+       │  <body>     → HTML layout (search, cards, forecast) │
+       │  <script>   → All JavaScript (API calls, DOM, logic)│
+       └─────────────────────────────────────────────────────┘
+       HOW TO USE:
+       1. Get a FREE API key from https://openweathermap.org/api
+       2. Replace "YOUR_API_KEY" on line ~330 with your actual key
+       3. Open this file in any browser — no server needed!
+       ============================================================ -->
+
+  <!-- Google Fonts: Sora (display) + DM Sans (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ============================================================
+       CSS SECTION 1 — DESIGN TOKENS & RESET
+       ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      /* Color palette */
+      --sky-deep:    #0f1b2d;
+      --sky-mid:     #152540;
+      --sky-panel:   #1a2f52;
+      --sky-card:    rgba(255,255,255,0.07);
+      --sky-border:  rgba(255,255,255,0.12);
+      --sky-hover:   rgba(255,255,255,0.10);
+      --gold:        #f0c060;
+      --gold-light:  #f7dd99;
+      --blue-accent: #5ba4f5;
+      --blue-soft:   #93c5fd;
+      --text-main:   #e8f0fc;
+      --text-muted:  rgba(232,240,252,0.55);
+      --text-faint:  rgba(232,240,252,0.30);
+      --success:     #34d399;
+      --danger:      #f87171;
+      --warn:        #fbbf24;
+
+      /* Typography */
+      --font-display: 'Sora', sans-serif;
+      --font-body:    'DM Sans', sans-serif;
+
+      /* Spacing */
+      --r-sm:  8px;
+      --r-md:  14px;
+      --r-lg:  20px;
+      --r-xl:  28px;
+
+      /* Transitions */
+      --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* ============================================================
+       CSS SECTION 2 — BASE & BACKGROUND
+       ============================================================ */
+    html, body {
+      min-height: 100vh;
+      font-family: var(--font-body);
+      background: var(--sky-deep);
+      color: var(--text-main);
+    }
+
+    /* Animated gradient sky background */
+    body {
+      background:
+        radial-gradient(ellipse 80% 60% at 20% -10%, rgba(91,164,245,0.18) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 80% at 80% 110%, rgba(91,164,245,0.12) 0%, transparent 60%),
+        linear-gradient(160deg, #0f1b2d 0%, #152540 50%, #0d1a2e 100%);
+      background-attachment: fixed;
+    }
+
+    /* Subtle star/noise texture layer */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.4) 0%, transparent 100%),
+        radial-gradient(1px 1px at 70% 15%, rgba(255,255,255,0.3) 0%, transparent 100%),
+        radial-gradient(1px 1px at 45% 70%, rgba(255,255,255,0.25) 0%, transparent 100%),
+        radial-gradient(1px 1px at 85% 55%, rgba(255,255,255,0.2) 0%, transparent 100%),
+        radial-gradient(1px 1px at 10% 85%, rgba(255,255,255,0.2) 0%, transparent 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ============================================================
+       CSS SECTION 3 — LAYOUT WRAPPER
+       ============================================================ */
+    .app {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2.5rem 1rem 4rem;
+    }
+
+    /* ============================================================
+       CSS SECTION 4 — HEADER & TITLE
+       ============================================================ */
+    .app-header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+      animation: fadeDown 0.6s var(--ease) both;
+    }
+
+    .app-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text-main);
+    }
+
+    .app-title span {
+      color: var(--gold);
+    }
+
+    .app-subtitle {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 0.35rem;
+      font-weight: 300;
+      letter-spacing: 0.04em;
+    }
+
+    /* ============================================================
+       CSS SECTION 5 — SEARCH BAR
+       ============================================================ */
+    .search-wrap {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+      max-width: 500px;
+      margin-bottom: 2.5rem;
+      animation: fadeDown 0.6s 0.1s var(--ease) both;
+    }
+
+    .search-input {
+      flex: 1;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid var(--sky-border);
+      border-radius: 50px;
+      padding: 0.75rem 1.4rem;
+      color: var(--text-main);
+      font-family: var(--font-body);
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .search-input::placeholder {
+      color: var(--text-faint);
+    }
+
+    .search-input:focus {
+      border-color: var(--blue-accent);
+      background: rgba(91,164,245,0.10);
+    }
+
+    .search-btn {
+      background: var(--blue-accent);
+      border: none;
+      border-radius: 50px;
+      padding: 0.75rem 1.5rem;
+      color: #fff;
+      font-family: var(--font-display);
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.15s;
+      white-space: nowrap;
+    }
+
+    .search-btn:hover  { background: #82b9f8; }
+    .search-btn:active { transform: scale(0.97); }
+
+    /* Location button */
+    .locate-btn {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid var(--sky-border);
+      border-radius: 50px;
+      padding: 0.75rem 1rem;
+      color: var(--text-muted);
+      font-size: 1.2rem;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .locate-btn:hover { background: var(--sky-hover); color: var(--gold); }
+
+    /* ============================================================
+       CSS SECTION 6 — GLASS CARD BASE
+       ============================================================ */
+    .glass {
+      background: rgba(255,255,255,0.06);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--sky-border);
+      border-radius: var(--r-xl);
+    }
+
+    /* ============================================================
+       CSS SECTION 7 — MAIN WEATHER CARD
+       ============================================================ */
+    .main-card {
+      width: 100%;
+      max-width: 500px;
+      padding: 2rem 2rem 1.8rem;
+      animation: fadeUp 0.5s 0.2s var(--ease) both;
+      margin-bottom: 1.2rem;
+    }
+
+    .main-card.hidden { display: none; }
+
+    /* City + Country row */
+    .city-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 0.25rem;
+    }
+
+    .city-name {
+      font-family: var(--font-display);
+      font-size: clamp(1.5rem, 5vw, 2.2rem);
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+    }
+
+    .country-badge {
+      background: rgba(91,164,245,0.18);
+      border: 1px solid rgba(91,164,245,0.3);
+      border-radius: 6px;
+      padding: 3px 9px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--blue-soft);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-top: 6px;
+    }
+
+    /* Local date/time */
+    .datetime-row {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-bottom: 1.6rem;
+    }
+
+    /* Big temperature + icon */
+    .temp-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+    }
+
+    .temp-big {
+      font-family: var(--font-display);
+      font-size: clamp(4rem, 14vw, 6.5rem);
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.04em;
+      color: var(--text-main);
+    }
+
+    .temp-unit-toggle {
+      font-size: 1.6rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-weight: 300;
+      transition: color 0.2s;
+      margin-left: 4px;
+      vertical-align: super;
+    }
+
+    .temp-unit-toggle:hover { color: var(--gold); }
+
+    .weather-icon-main {
+      font-size: 5.5rem;
+      line-height: 1;
+      filter: drop-shadow(0 0 20px rgba(240,192,96,0.3));
+      animation: float 3.5s ease-in-out infinite;
+    }
+
+    .weather-condition {
+      font-size: 1rem;
+      color: var(--text-muted);
+      font-weight: 300;
+      text-transform: capitalize;
+      letter-spacing: 0.02em;
+      margin-bottom: 0.3rem;
+    }
+
+    .feels-like {
+      font-size: 0.82rem;
+      color: var(--text-faint);
+    }
+
+    /* Divider */
+    .divider {
+      height: 1px;
+      background: var(--sky-border);
+      margin: 1.4rem 0;
+    }
+
+    /* Stats grid (humidity, wind, etc.) */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+    }
+
+    .stat-item {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--r-md);
+      padding: 0.85rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .stat-icon {
+      font-size: 1.4rem;
+      width: 32px;
+      text-align: center;
+    }
+
+    .stat-label {
+      font-size: 0.72rem;
+      color: var(--text-faint);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 2px;
+    }
+
+    .stat-value {
+      font-family: var(--font-display);
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    /* High / Low row */
+    .hi-lo {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .hi-lo span { color: var(--text-main); font-weight: 600; }
+    .hi-lo .hi  { color: var(--gold); }
+    .hi-lo .lo  { color: var(--blue-soft); }
+
+    /* ============================================================
+       CSS SECTION 8 — 5-DAY FORECAST STRIP
+       ============================================================ */
+    .forecast-strip {
+      width: 100%;
+      max-width: 500px;
+      padding: 1.2rem 1.4rem;
+      animation: fadeUp 0.5s 0.35s var(--ease) both;
+      margin-bottom: 1.2rem;
+    }
+
+    .forecast-strip.hidden { display: none; }
+
+    .forecast-title {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-faint);
+      margin-bottom: 1rem;
+    }
+
+    .forecast-list {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      scrollbar-width: none;
+    }
+
+    .forecast-list::-webkit-scrollbar { display: none; }
+
+    .forecast-day {
+      flex: 1;
+      min-width: 72px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--r-md);
+      padding: 0.7rem 0.5rem;
+      text-align: center;
+      cursor: default;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .forecast-day:hover {
+      background: rgba(255,255,255,0.09);
+      border-color: rgba(91,164,245,0.3);
+    }
+
+    .fc-day-name {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .fc-icon { font-size: 1.6rem; margin-bottom: 6px; }
+
+    .fc-hi {
+      font-family: var(--font-display);
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--gold);
+    }
+
+    .fc-lo {
+      font-size: 0.78rem;
+      color: var(--blue-soft);
+    }
+
+    /* ============================================================
+       CSS SECTION 9 — HOURLY STRIP
+       ============================================================ */
+    .hourly-strip {
+      width: 100%;
+      max-width: 500px;
+      padding: 1.2rem 1.4rem;
+      animation: fadeUp 0.5s 0.45s var(--ease) both;
+      margin-bottom: 1.2rem;
+    }
+
+    .hourly-strip.hidden { display: none; }
+
+    .hourly-list {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      scrollbar-width: none;
+    }
+
+    .hourly-list::-webkit-scrollbar { display: none; }
+
+    .hourly-item {
+      flex-shrink: 0;
+      text-align: center;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--r-md);
+      padding: 0.6rem 0.85rem;
+    }
+
+    .h-time { font-size: 0.72rem; color: var(--text-faint); margin-bottom: 6px; }
+    .h-icon { font-size: 1.2rem; margin-bottom: 6px; }
+    .h-temp { font-family: var(--font-display); font-size: 0.9rem; font-weight: 600; }
+
+    /* ============================================================
+       CSS SECTION 10 — ERROR & LOADING STATES
+       ============================================================ */
+    .status-box {
+      width: 100%;
+      max-width: 500px;
+      text-align: center;
+      padding: 2rem;
+      animation: fadeUp 0.4s var(--ease) both;
+    }
+
+    .status-box.hidden { display: none; }
+
+    .error-icon { font-size: 3rem; margin-bottom: 0.75rem; }
+
+    .error-msg {
+      font-size: 1rem;
+      color: var(--danger);
+      font-weight: 500;
+    }
+
+    .error-sub {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-top: 0.4rem;
+    }
+
+    /* Loading spinner */
+    .loader {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(91,164,245,0.25);
+      border-top-color: var(--blue-accent);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+      margin: 0 auto 1rem;
+    }
+
+    .loading-text {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    /* ============================================================
+       CSS SECTION 11 — UV INDEX BAR
+       ============================================================ */
+    .uv-bar-track {
+      height: 6px;
+      background: linear-gradient(90deg, #34d399, #fbbf24, #f87171);
+      border-radius: 50px;
+      position: relative;
+      margin-top: 4px;
+    }
+
+    .uv-bar-thumb {
+      width: 12px; height: 12px;
+      background: #fff;
+      border-radius: 50%;
+      position: absolute;
+      top: 50%; transform: translateY(-50%);
+      box-shadow: 0 0 6px rgba(0,0,0,0.4);
+      transition: left 0.4s var(--ease);
+    }
+
+    /* ============================================================
+       CSS SECTION 12 — KEYFRAME ANIMATIONS
+       ============================================================ */
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-8px); }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ============================================================
+       CSS SECTION 13 — RESPONSIVE TWEAKS
+       ============================================================ */
+    @media (max-width: 420px) {
+      .stats-grid    { grid-template-columns: 1fr 1fr; }
+      .temp-big      { font-size: 4.5rem; }
+      .weather-icon-main { font-size: 4rem; }
+      .search-btn    { padding: 0.75rem 1rem; }
+      .main-card     { padding: 1.5rem 1.25rem; }
+    }
+
+    /* ============================================================
+       CSS SECTION 14 — API KEY NOTICE BANNER
+       ============================================================ */
+    .api-notice {
+      background: rgba(251,191,36,0.12);
+      border: 1px solid rgba(251,191,36,0.3);
+      border-radius: var(--r-md);
+      padding: 0.8rem 1.2rem;
+      font-size: 0.82rem;
+      color: var(--warn);
+      width: 100%;
+      max-width: 500px;
+      margin-bottom: 1.5rem;
+      line-height: 1.5;
+      animation: fadeDown 0.5s var(--ease) both;
+    }
+
+    .api-notice a {
+      color: var(--gold);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .api-notice.hidden { display: none; }
+
+    /* ============================================================
+       CSS SECTION 15 — ATTRIBUTION FOOTER
+       ============================================================ */
+    .attribution {
+      margin-top: 2rem;
+      font-size: 0.72rem;
+      color: var(--text-faint);
+      text-align: center;
+    }
+    .attribution a { color: var(--text-faint); text-underline-offset: 2px; }
+
+    /* ============================================================
+       CSS SECTION 16 — PWA / SAFE AREA (iPhone notch support)
+       ============================================================ */
+    .app {
+      padding-top:    max(2.5rem, env(safe-area-inset-top));
+      padding-bottom: max(4rem,   env(safe-area-inset-bottom));
+      padding-left:   max(1rem,   env(safe-area-inset-left));
+      padding-right:  max(1rem,   env(safe-area-inset-right));
+    }
+
+    /* Install prompt banner */
+    .install-banner {
+      position: fixed;
+      bottom: max(1.5rem, env(safe-area-inset-bottom));
+      left: 50%; transform: translateX(-50%);
+      background: rgba(21,37,64,0.96);
+      border: 1px solid rgba(91,164,245,0.35);
+      border-radius: 50px;
+      padding: 0.7rem 1.2rem;
+      display: flex; align-items: center; gap: 12px;
+      font-size: 0.85rem; color: var(--text-main);
+      z-index: 999; white-space: nowrap;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      animation: fadeUp 0.4s var(--ease) both;
+      backdrop-filter: blur(16px);
+    }
+    .install-banner.hidden { display: none; }
+    .install-btn {
+      background: var(--blue-accent); border: none; border-radius: 50px;
+      padding: 0.4rem 1rem; color: #fff; font-size: 0.82rem;
+      font-weight: 600; cursor: pointer; font-family: var(--font-display);
+    }
+    .install-dismiss {
+      background: none; border: none; color: var(--text-faint);
+      cursor: pointer; font-size: 1rem; padding: 0 4px;
+    }
+
+    /* Offline toast */
+    .offline-toast {
+      position: fixed;
+      top: max(1rem, env(safe-area-inset-top));
+      left: 50%; transform: translateX(-50%);
+      background: rgba(248,113,113,0.15);
+      border: 1px solid rgba(248,113,113,0.4);
+      border-radius: 50px; padding: 0.5rem 1.2rem;
+      font-size: 0.82rem; color: var(--danger);
+      z-index: 999; display: none;
+    }
+    .offline-toast.visible { display: block; }
+  </style>
+</head>
+
+<!-- ============================================================
+     HTML SECTION — BODY / LAYOUT
+     ============================================================ -->
+<body>
+  <div class="app">
+
+    <!-- HEADER -->
+    <header class="app-header">
+      <h1 class="app-title">⛅ Sky<span>Cast</span></h1>
+      <p class="app-subtitle">Real-time weather, beautifully presented</p>
+    </header>
+
+    <!-- API KEY NOTICE (shown when using placeholder key) -->
+    <div class="api-notice" id="apiNotice">
+      ⚠️ <strong>API key required:</strong> Get a free key at
+      <a href="https://openweathermap.org/api" target="_blank">openweathermap.org</a>,
+      then replace <code>YOUR_API_KEY</code> near line 330 in this file.
+    </div>
+
+    <!-- SEARCH BAR -->
+    <div class="search-wrap">
+      <input
+        class="search-input"
+        id="searchInput"
+        type="text"
+        placeholder="Search city (e.g. London, Tokyo, New York)…"
+        autocomplete="off"
+        aria-label="City name"
+      />
+      <button class="locate-btn" id="locateBtn" title="Use my location" aria-label="Detect location">
+        📍
+      </button>
+      <button class="search-btn" id="searchBtn">Search</button>
+    </div>
+
+    <!-- LOADING STATE -->
+    <div class="status-box hidden" id="loadingBox">
+      <div class="loader"></div>
+      <p class="loading-text">Fetching weather data…</p>
+    </div>
+
+    <!-- ERROR STATE -->
+    <div class="status-box hidden" id="errorBox">
+      <div class="error-icon">🌧️</div>
+      <p class="error-msg" id="errorMsg">Something went wrong</p>
+      <p class="error-sub" id="errorSub">Please try a different city name</p>
+    </div>
+
+    <!-- MAIN WEATHER CARD -->
+    <div class="glass main-card hidden" id="mainCard">
+
+      <!-- City + Country -->
+      <div class="city-row">
+        <h2 class="city-name" id="cityName">—</h2>
+        <span class="country-badge" id="countryCode">—</span>
+      </div>
+      <p class="datetime-row" id="datetimeRow">—</p>
+
+      <!-- Big Temp + Icon -->
+      <div class="temp-row">
+        <div>
+          <div>
+            <span class="temp-big" id="tempBig">—</span>
+            <span class="temp-unit-toggle" id="unitToggle" title="Toggle °C / °F">°C</span>
+          </div>
+          <p class="weather-condition" id="weatherCondition">—</p>
+          <p class="feels-like" id="feelsLike">—</p>
+        </div>
+        <div class="weather-icon-main" id="weatherIconMain" aria-hidden="true">—</div>
+      </div>
+
+      <!-- High / Low -->
+      <div class="hi-lo">
+        <div>↑ <span class="hi" id="tempHigh">—</span></div>
+        <div>↓ <span class="lo" id="tempLow">—</span></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Stats Grid -->
+      <div class="stats-grid">
+
+        <div class="stat-item">
+          <span class="stat-icon" aria-hidden="true">💧</span>
+          <div>
+            <div class="stat-label">Humidity</div>
+            <div class="stat-value" id="humidity">—</div>
+          </div>
+        </div>
+
+        <div class="stat-item">
+          <span class="stat-icon" aria-hidden="true">🌬️</span>
+          <div>
+            <div class="stat-label">Wind</div>
+            <div class="stat-value" id="wind">—</div>
+          </div>
+        </div>
+
+        <div class="stat-item">
+          <span class="stat-icon" aria-hidden="true">👁️</span>
+          <div>
+            <div class="stat-label">Visibility</div>
+            <div class="stat-value" id="visibility">—</div>
+          </div>
+        </div>
+
+        <div class="stat-item">
+          <span class="stat-icon" aria-hidden="true">🧭</span>
+          <div>
+            <div class="stat-label">Pressure</div>
+            <div class="stat-value" id="pressure">—</div>
+          </div>
+        </div>
+
+        <div class="stat-item">
+          <span class="stat-icon" aria-hidden="true">☀️</span>
+          <div>
+            <div class="stat-label">UV Index</div>
+            <div class="stat-value" id="uvIndex">—</div>
+            <div class="uv-bar-track" style="width:100px">
+              <div class="uv-bar-thumb" id="uvThumb"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stat-item">
+          <span class="stat-icon" aria-hidden="true">🌅</span>
+          <div>
+            <div class="stat-label">Sunrise / Sunset</div>
+            <div class="stat-value" id="sunTimes">—</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- HOURLY FORECAST -->
+    <div class="glass hourly-strip hidden" id="hourlyStrip">
+      <p class="forecast-title">Next 24 Hours</p>
+      <div class="hourly-list" id="hourlyList"></div>
+    </div>
+
+    <!-- 5-DAY FORECAST -->
+    <div class="glass forecast-strip hidden" id="forecastStrip">
+      <p class="forecast-title">5-Day Forecast</p>
+      <div class="forecast-list" id="forecastList"></div>
+    </div>
+
+    <!-- FOOTER -->
+    <p class="attribution">
+      Powered by <a href="https://openweathermap.org" target="_blank">OpenWeatherMap</a>
+    </p>
+
+  </div><!-- /.app -->
+
+  <!-- INSTALL BANNER (Android Chrome "Add to Home Screen") -->
+  <div class="install-banner hidden" id="installBanner">
+    ⛅ Add SkyCast to Home Screen
+    <button class="install-btn" id="installBtn">Install</button>
+    <button class="install-dismiss" id="installDismiss" aria-label="Dismiss">✕</button>
+  </div>
+
+  <!-- OFFLINE TOAST -->
+  <div class="offline-toast" id="offlineToast">📡 You're offline — showing cached data</div>
+
+  <!-- ============================================================
+       JAVASCRIPT SECTION
+       ============================================================
+       STRUCTURE:
+       1. CONFIG            — API key & constants
+       2. STATE             — App state variables
+       3. DOM REFERENCES    — Cached element handles
+       4. UTILITY FUNCTIONS — Helpers (temp convert, icons, time…)
+       5. API FUNCTIONS     — Fetch current weather & forecast
+       6. RENDER FUNCTIONS  — Update the DOM with data
+       7. EVENT HANDLERS    — Search, locate, unit toggle
+       8. INIT              — Bootstrap on page load
+       ============================================================ -->
+  <script>
+    /* ============================================================
+       1. CONFIG
+       ============================================================
+       ▶ IMPORTANT: Replace "YOUR_API_KEY" with your actual key
+         from https://openweathermap.org/api (free tier works!)
+       ============================================================ */
+    const CONFIG = {
+      API_KEY: 'YOUR_API_KEY',                         // ← replace this
+      BASE_URL: 'https://api.openweathermap.org/data/2.5',
+      DEFAULT_CITY: 'London',
+    };
+
+    /* ============================================================
+       2. STATE
+       ============================================================ */
+    const STATE = {
+      tempUnit: 'C',          // 'C' or 'F'
+      currentData: null,      // raw API weather object
+      forecastData: null,     // raw API forecast object
+    };
+
+    /* ============================================================
+       3. DOM REFERENCES
+       ============================================================ */
+    const $ = id => document.getElementById(id);
+
+    const DOM = {
+      searchInput:      $('searchInput'),
+      searchBtn:        $('searchBtn'),
+      locateBtn:        $('locateBtn'),
+      mainCard:         $('mainCard'),
+      loadingBox:       $('loadingBox'),
+      errorBox:         $('errorBox'),
+      errorMsg:         $('errorMsg'),
+      errorSub:         $('errorSub'),
+      forecastStrip:    $('forecastStrip'),
+      forecastList:     $('forecastList'),
+      hourlyStrip:      $('hourlyStrip'),
+      hourlyList:       $('hourlyList'),
+      cityName:         $('cityName'),
+      countryCode:      $('countryCode'),
+      datetimeRow:      $('datetimeRow'),
+      tempBig:          $('tempBig'),
+      unitToggle:       $('unitToggle'),
+      weatherCondition: $('weatherCondition'),
+      feelsLike:        $('feelsLike'),
+      weatherIconMain:  $('weatherIconMain'),
+      tempHigh:         $('tempHigh'),
+      tempLow:          $('tempLow'),
+      humidity:         $('humidity'),
+      wind:             $('wind'),
+      visibility:       $('visibility'),
+      pressure:         $('pressure'),
+      uvIndex:          $('uvIndex'),
+      uvThumb:          $('uvThumb'),
+      sunTimes:         $('sunTimes'),
+      apiNotice:        $('apiNotice'),
+    };
+
+    /* ============================================================
+       4. UTILITY FUNCTIONS
+       ============================================================ */
+
+    /**
+     * Convert Kelvin → Celsius or Fahrenheit
+     * @param {number} k   - Temperature in Kelvin
+     * @param {string} unit - 'C' or 'F'
+     * @returns {string}
+     */
+    function kelvinTo(k, unit = 'C') {
+      const c = k - 273.15;
+      if (unit === 'F') return Math.round(c * 9 / 5 + 32) + '°F';
+      return Math.round(c) + '°C';
+    }
+
+    /**
+     * Map OpenWeatherMap icon code to an emoji
+     * @param {string} code - e.g. "01d", "09n"
+     * @returns {string}
+     */
+    function iconEmoji(code) {
+      const map = {
+        '01d': '☀️',  '01n': '🌙',
+        '02d': '🌤️', '02n': '🌤️',
+        '03d': '☁️',  '03n': '☁️',
+        '04d': '☁️',  '04n': '☁️',
+        '09d': '🌧️', '09n': '🌧️',
+        '10d': '🌦️', '10n': '🌧️',
+        '11d': '⛈️', '11n': '⛈️',
+        '13d': '❄️',  '13n': '❄️',
+        '50d': '🌫️', '50n': '🌫️',
+      };
+      return map[code] || '🌡️';
+    }
+
+    /**
+     * Format Unix timestamp → "HH:MM AM/PM" in local browser time
+     * @param {number} unix - Unix timestamp (seconds)
+     * @param {number} tzOffset - UTC offset in seconds from API
+     * @returns {string}
+     */
+    function formatTime(unix, tzOffset = 0) {
+      const d = new Date((unix + tzOffset) * 1000);
+      // Use UTC to account for the city's timezone offset
+      const h = d.getUTCHours();
+      const m = String(d.getUTCMinutes()).padStart(2, '0');
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const h12 = h % 12 || 12;
+      return `${h12}:${m} ${ampm}`;
+    }
+
+    /**
+     * Format Unix timestamp → "Mon, June 10" style
+     */
+    function formatDate(unix, tzOffset = 0) {
+      const d = new Date((unix + tzOffset) * 1000);
+      return d.toUTCString().slice(0, 16).replace(',', '');
+    }
+
+    /**
+     * Get abbreviated day name from Unix timestamp
+     */
+    function getDayName(unix, tzOffset = 0) {
+      const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      const d = new Date((unix + tzOffset) * 1000);
+      return days[d.getUTCDay()];
+    }
+
+    /**
+     * Wind direction in degrees → compass string
+     */
+    function windDir(deg) {
+      const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+      return dirs[Math.round(deg / 45) % 8];
+    }
+
+    /**
+     * Show/hide UI elements by toggling the "hidden" class
+     */
+    function show(el) { el.classList.remove('hidden'); }
+    function hide(el) { el.classList.add('hidden'); }
+
+    /* ============================================================
+       5. API FUNCTIONS
+       ============================================================ */
+
+    /**
+     * Fetch current weather by city name or lat/lon
+     * OWM endpoint: /weather
+     */
+    async function fetchCurrentWeather(query) {
+      const url = typeof query === 'string'
+        ? `${CONFIG.BASE_URL}/weather?q=${encodeURIComponent(query)}&appid=${CONFIG.API_KEY}`
+        : `${CONFIG.BASE_URL}/weather?lat=${query.lat}&lon=${query.lon}&appid=${CONFIG.API_KEY}`;
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Weather fetch failed: ${res.status}`);
+      return res.json();
+    }
+
+    /**
+     * Fetch 5-day / 3-hour forecast
+     * OWM endpoint: /forecast
+     */
+    async function fetchForecast(query) {
+      const url = typeof query === 'string'
+        ? `${CONFIG.BASE_URL}/forecast?q=${encodeURIComponent(query)}&appid=${CONFIG.API_KEY}`
+        : `${CONFIG.BASE_URL}/forecast?lat=${query.lat}&lon=${query.lon}&appid=${CONFIG.API_KEY}`;
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Forecast fetch failed: ${res.status}`);
+      return res.json();
+    }
+
+    /**
+     * Fetch UV Index using lat/lon (OWM /uvi endpoint, free tier)
+     */
+    async function fetchUVIndex(lat, lon) {
+      try {
+        const url = `${CONFIG.BASE_URL}/uvi?lat=${lat}0026lon=${lon}0026appid=${CONFIG.API_KEY}`;
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.value ?? null;
+      } catch { return null; }
+    }
+
+    /**
+     * Main load function — orchestrates all fetches
+     */
+    async function loadWeather(query) {
+      // Show loading, hide everything else
+      hide(DOM.mainCard);
+      hide(DOM.forecastStrip);
+      hide(DOM.hourlyStrip);
+      hide(DOM.errorBox);
+      show(DOM.loadingBox);
+
+      try {
+        // Fetch weather + forecast in parallel
+        const [current, forecast] = await Promise.all([
+          fetchCurrentWeather(query),
+          fetchForecast(query),
+        ]);
+
+        // Fetch UV Index using the coordinates from the weather response
+        const uv = await fetchUVIndex(current.coord.lat, current.coord.lon);
+
+        STATE.currentData  = current;
+        STATE.forecastData = forecast;
+        STATE.uvData       = uv;
+
+        hide(DOM.loadingBox);
+        renderCurrent(current, uv);
+        renderHourly(forecast, current.timezone);
+        renderForecast(forecast, current.timezone);
+
+      } catch (err) {
+        hide(DOM.loadingBox);
+        showError(err);
+      }
+    }
+
+    /* ============================================================
+       6. RENDER FUNCTIONS
+       ============================================================ */
+
+    /**
+     * Populate the main weather card
+     */
+    function renderCurrent(d, uv = null) {
+      const tz = d.timezone; // UTC offset in seconds
+
+      DOM.cityName.textContent         = d.name;
+      DOM.countryCode.textContent      = d.sys.country;
+      DOM.datetimeRow.textContent      = `${formatDate(d.dt, tz)} · ${formatTime(d.dt, tz)}`;
+      DOM.tempBig.textContent          = Math.round(d.main.temp - 273.15);
+      DOM.unitToggle.textContent       = STATE.tempUnit === 'C' ? '°C' : '°F';
+      DOM.weatherCondition.textContent = d.weather[0].description;
+      DOM.feelsLike.textContent        = `Feels like ${kelvinTo(d.main.feels_like, STATE.tempUnit)}`;
+      DOM.weatherIconMain.textContent  = iconEmoji(d.weather[0].icon);
+      DOM.tempHigh.textContent         = kelvinTo(d.main.temp_max, STATE.tempUnit);
+      DOM.tempLow.textContent          = kelvinTo(d.main.temp_min, STATE.tempUnit);
+      DOM.humidity.textContent         = `${d.main.humidity}%`;
+      DOM.wind.textContent             = `${Math.round(d.wind.speed * 3.6)} km/h ${windDir(d.wind.deg || 0)}`;
+      DOM.visibility.textContent       = d.visibility ? `${(d.visibility / 1000).toFixed(1)} km` : '—';
+      DOM.pressure.textContent         = `${d.main.pressure} hPa`;
+      DOM.sunTimes.textContent         = `${formatTime(d.sys.sunrise, tz)} / ${formatTime(d.sys.sunset, tz)}`;
+
+      // UV Index — fetched separately from /uvi endpoint
+      if (uv !== null) {
+        const uvVal = Math.round(uv);
+        const uvLabel = uvVal <= 2 ? 'Low' : uvVal <= 5 ? 'Moderate' : uvVal <= 7 ? 'High' : uvVal <= 10 ? 'Very High' : 'Extreme';
+        DOM.uvIndex.textContent = `${uvVal} — ${uvLabel}`;
+        // Position thumb on the bar (scale 0–11+)
+        const pct = Math.min((uvVal / 11) * 100, 96);
+        DOM.uvThumb.style.left = `${pct}%`;
+      } else {
+        DOM.uvIndex.textContent = 'N/A';
+        DOM.uvThumb.style.left  = '0%';
+      }
+
+      show(DOM.mainCard);
+    }
+
+    /**
+     * Render the next-24-hours strip (every 3 hours)
+     */
+    function renderHourly(forecast, tzOffset) {
+      const items = forecast.list.slice(0, 8); // 8 × 3h = 24h
+      DOM.hourlyList.innerHTML = items.map(item => `
+        <div class="hourly-item">
+          <div class="h-time">${formatTime(item.dt, tzOffset)}</div>
+          <div class="h-icon">${iconEmoji(item.weather[0].icon)}</div>
+          <div class="h-temp">${kelvinTo(item.main.temp, STATE.tempUnit)}</div>
+        </div>
+      `).join('');
+      show(DOM.hourlyStrip);
+    }
+
+    /**
+     * Render the 5-day forecast strip
+     * Groups 3-hourly data into one entry per calendar day (midday slot)
+     */
+    function renderForecast(forecast, tzOffset) {
+      // Pick one entry per unique day (closest to noon)
+      const seen = new Set();
+      const days = forecast.list.filter(item => {
+        const d = new Date((item.dt + tzOffset) * 1000);
+        const dayKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
+        const h = d.getUTCHours();
+        if (!seen.has(dayKey) && h >= 11 && h <= 14) {
+          seen.add(dayKey);
+          return true;
+        }
+        return false;
+      }).slice(0, 5);
+
+      // Fallback: if no midday slots (e.g. edge case at midnight), just pick first per day
+      const fallback = [];
+      const seen2 = new Set();
+      if (days.length < 5) {
+        forecast.list.forEach(item => {
+          const d = new Date((item.dt + tzOffset) * 1000);
+          const key = `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
+          if (!seen2.has(key)) { seen2.add(key); fallback.push(item); }
+        });
+        days.splice(0, days.length, ...fallback.slice(0, 5));
+      }
+
+      DOM.forecastList.innerHTML = days.map(item => `
+        <div class="forecast-day">
+          <div class="fc-day-name">${getDayName(item.dt, tzOffset)}</div>
+          <div class="fc-icon">${iconEmoji(item.weather[0].icon)}</div>
+          <div class="fc-hi">${kelvinTo(item.main.temp_max, STATE.tempUnit)}</div>
+          <div class="fc-lo">${kelvinTo(item.main.temp_min, STATE.tempUnit)}</div>
+        </div>
+      `).join('');
+
+      show(DOM.forecastStrip);
+    }
+
+    /**
+     * Display an error state
+     */
+    function showError(err) {
+      console.error(err);
+      const is404 = err.message.includes('404');
+      DOM.errorMsg.textContent = is404 ? 'City not found' : 'Connection error';
+      DOM.errorSub.textContent = is404
+        ? 'Double-check the city name and try again'
+        : 'Check your API key or internet connection';
+      show(DOM.errorBox);
+    }
+
+    /* ============================================================
+       7. EVENT HANDLERS
+       ============================================================ */
+
+    /** Search on button click */
+    DOM.searchBtn.addEventListener('click', () => {
+      const city = DOM.searchInput.value.trim();
+      if (city) loadWeather(city);
+    });
+
+    /** Search on Enter key */
+    DOM.searchInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        const city = DOM.searchInput.value.trim();
+        if (city) loadWeather(city);
+      }
+    });
+
+    /** Detect location via Geolocation API */
+    DOM.locateBtn.addEventListener('click', () => {
+      if (!navigator.geolocation) {
+        alert('Geolocation is not supported by your browser.');
+        return;
+      }
+      DOM.locateBtn.textContent = '⏳';
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          DOM.locateBtn.textContent = '📍';
+          loadWeather({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+        },
+        () => {
+          DOM.locateBtn.textContent = '📍';
+          alert('Unable to retrieve your location. Please allow location access.');
+        }
+      );
+    });
+
+    /** Toggle temperature unit °C ↔ °F */
+    DOM.unitToggle.addEventListener('click', () => {
+      STATE.tempUnit = STATE.tempUnit === 'C' ? 'F' : 'C';
+      DOM.unitToggle.textContent = STATE.tempUnit === 'C' ? '°C' : '°F';
+      // Re-render all data with new unit (no new API call needed)
+      if (STATE.currentData)  renderCurrent(STATE.currentData, STATE.uvData ?? null);
+      if (STATE.forecastData) {
+        renderHourly(STATE.forecastData, STATE.currentData.timezone);
+        renderForecast(STATE.forecastData, STATE.currentData.timezone);
+      }
+    });
+
+    /* ============================================================
+       8. INIT
+       ============================================================ */
+    (function init() {
+      const hasKey = CONFIG.API_KEY && CONFIG.API_KEY !== 'YOUR_API_KEY';
+      if (!hasKey) { show(DOM.apiNotice); return; }
+      hide(DOM.apiNotice);
+      loadWeather(CONFIG.DEFAULT_CITY);
+    })();
+
+    /* ============================================================
+       9. PWA — SERVICE WORKER REGISTRATION
+       ============================================================ */
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then(reg => console.log('✅ SW registered:', reg.scope))
+          .catch(err => console.warn('SW registration failed:', err));
+      });
+    }
+
+    /* ============================================================
+       10. PWA — INSTALL PROMPT (Android Chrome)
+       ============================================================ */
+    let deferredPrompt = null;
+    const installBanner  = document.getElementById('installBanner');
+    const installBtn     = document.getElementById('installBtn');
+    const installDismiss = document.getElementById('installDismiss');
+
+    // Browser fires this when app is installable
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault();
+      deferredPrompt = e;
+      installBanner.classList.remove('hidden');
+    });
+
+    installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log('Install outcome:', outcome);
+      deferredPrompt = null;
+      installBanner.classList.add('hidden');
+    });
+
+    installDismiss.addEventListener('click', () => {
+      installBanner.classList.add('hidden');
+    });
+
+    // Hide banner once installed
+    window.addEventListener('appinstalled', () => {
+      installBanner.classList.add('hidden');
+      deferredPrompt = null;
+    });
+
+    /* ============================================================
+       11. PWA — OFFLINE / ONLINE DETECTION
+       ============================================================ */
+    const offlineToast = document.getElementById('offlineToast');
+
+    function updateOnlineStatus() {
+      if (!navigator.onLine) {
+        offlineToast.classList.add('visible');
+      } else {
+        offlineToast.classList.remove('visible');
+      }
+    }
+
+    window.addEventListener('online',  updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    updateOnlineStatus(); // check on load
+
+  </script>
+</body>
+</html>
